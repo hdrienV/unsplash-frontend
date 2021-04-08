@@ -29,7 +29,9 @@
             </b-input-group>
           </b-col>
           <b-col offset-sm="3" sm="3">
-            <b-button variant="success">add a photo</b-button>
+            <b-button variant="success" @click="modalShowAdd = !modalShowAdd"
+              >add a photo</b-button
+            >
           </b-col>
         </b-row>
       </b-container>
@@ -47,33 +49,34 @@
                 <b-button
                   class="content-button float-sm-right"
                   variant="danger"
-                  @click="modalShow = !modalShow"
+                  @click="showDelete(item.id)"
                 >
                   Delete
                 </b-button>
                 <b-modal
-                  ref="my-modal"
+                  ref="my-modal-delete"
                   centered
                   hide-footer
-                  title="Suppression"
+                  title="Delete"
                   v-model="modalShow"
                 >
                   <div class="d-block text-center">
-                    <h3>Êtes-vous sûr de vouloir supprimer cette photo ?</h3>
+                    <h3>Are you sure to delete this photo ?</h3>
                   </div>
                   <b-button
                     class="mt-3"
                     variant="danger"
+                    :id="item.id"
                     block
-                    @click="hideDeleteModal(item.id).then(getImages())"
-                    >Supprimer</b-button
+                    @click="hideDeleteModal().then(getImages())"
+                    >Delete</b-button
                   >
                   <b-button
                     class="mt-2"
                     variant="outline-secondary"
                     block
                     @click="hideModal"
-                    >Annuler</b-button
+                    >Cancel</b-button
                   >
                 </b-modal>
               </div>
@@ -85,6 +88,65 @@
           </div>
         </template>
       </vue-masonry-wall>
+      <b-modal
+        ref="my-modal-add"
+        centered
+        hide-footer
+        title="Add a new photo"
+        v-model="modalShowAdd"
+      >
+        <div class="d-block">
+          <validation-observer v-slot="{ invalid }">
+            <b-form v-on:submit="addPhoto">
+              <validation-provider
+                v-slot="{ errors, valid }"
+                name="Label"
+                rules="required|max:20"
+              >
+                <b-form-group label="Label: ">
+                  <b-form-input
+                    v-model="form.label"
+                    placeholder="Enter Label"
+                    required
+                    type="text"
+                  ></b-form-input>
+                  <b-form-invalid-feedback :state="valid">
+                    <span v-for="(error, index) in errors" :key="index">{{
+                      error
+                    }}</span>
+                  </b-form-invalid-feedback>
+                </b-form-group>
+              </validation-provider>
+              <validation-provider
+                v-slot="{ errors, valid }"
+                name="Photo URL"
+                rules="required"
+              >
+                <b-form-group label="Photo URL:">
+                  <b-form-input
+                    placeholder="Enter photo URL"
+                    v-model="form.url"
+                    required
+                    type="url"
+                  ></b-form-input>
+                  <b-form-invalid-feedback :state="valid">
+                    <span v-for="(error, index) in errors" :key="index">{{
+                      error
+                    }}</span>
+                  </b-form-invalid-feedback>
+                </b-form-group>
+              </validation-provider>
+              <b-button
+                variant="success"
+                class="text-right"
+                type="submit"
+                :disabled="invalid"
+                >Add photo</b-button
+              >
+            </b-form>
+          </validation-observer>
+        </div>
+      </b-modal>
     </section>
   </div>
 </template>
@@ -94,6 +156,8 @@ import { Component, Vue } from "vue-property-decorator";
 import VueMasonryWall from "vue-masonry-wall";
 import axios from "axios";
 import { BModal } from "bootstrap-vue";
+import { extend, ValidationProvider, ValidationObserver } from "vee-validate";
+import { required, max } from "vee-validate/dist/rules";
 export interface Image {
   id: bigint;
   label: string;
@@ -101,15 +165,26 @@ export interface Image {
   date: Date;
 }
 
+extend("required", {
+  ...required,
+  message: "You may not left {_field_} empty"
+});
+extend("max", {
+  ...max,
+  message: "{_field_} should not exceed {length} characters"
+});
+
 @Component({
-  components: { VueMasonryWall, BModal }
+  components: { VueMasonryWall, BModal, ValidationProvider, ValidationObserver }
 })
 export default class Home extends Vue {
   public images: Image[] = [];
   containerImage = "";
   modalShow = false;
+  modalShowAdd = false;
   componentKey = 0;
   imageNameToSearch = "";
+  idToDelete = 0;
 
   options = {
     width: 450,
@@ -117,6 +192,13 @@ export default class Home extends Vue {
       default: 12
     }
   };
+
+  form = {
+    label: "",
+    url: ""
+  };
+
+  errors = {};
 
   mounted = () => {
     // API call and add items
@@ -131,9 +213,9 @@ export default class Home extends Vue {
     this.getImages();
     console.log("created");
   }
-  public async hideDeleteModal(id: string) {
+  public async hideDeleteModal() {
     this.modalShow = false;
-    await axios.delete("/api/v1/image/" + id);
+    await axios.delete("/api/v1/image/" + this.idToDelete);
     await this.getImages();
     this.forceRerender();
   }
@@ -158,6 +240,23 @@ export default class Home extends Vue {
 
   public forceRerender() {
     this.componentKey += 1;
+  }
+
+  public showDelete(id: number) {
+    this.modalShow = true;
+    this.idToDelete = id;
+  }
+
+  public async addPhoto(e: { preventDefault: () => void }) {
+    e.preventDefault();
+    await axios.post("/api/v1/image/", this.form);
+    await this.getImages();
+    this.form = {
+      label: "",
+      url: ""
+    };
+    this.modalShowAdd = false;
+    this.forceRerender();
   }
 }
 </script>
